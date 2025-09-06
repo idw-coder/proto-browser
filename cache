@@ -1,0 +1,15 @@
+HTTP/1.0 200 OK
+Server: SimpleHTTP/0.6 Python/3.12.3
+Date: Sat, 06 Sep 2025 07:25:46 GMT
+Content-type: text/html
+Content-Length: 261
+Last-Modified: Sat, 06 Sep 2025 07:05:49 GMT
+
+<html>
+<head>
+	<title>sample web page</title>
+</head>
+<body bgcolor="#cccccc" text="#ffffff">
+	Hello, world! Plese open <a href="link0.html">here</a>, and enjoy! <br> This is 2nd line. You can open <a href="link1.html">another link</a>.
+</body>
+</html>
