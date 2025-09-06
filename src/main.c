@@ -129,65 +129,71 @@ void draw_box(int x, int y, int width,
 }
 
 void draw_body(node_t* node, FT_Vector pen, int target_height,
-  FT_Face face, FT_Matrix matrix, FT_GlyphSlot slot, unsigned int fcolor)
-{
-  char* text;
-  char bgc[10] = "";
-  char fc[10] = "";
-
-  if (node == NULL)
-    return;
-
-  text = node->content;
-  if (node->tag == COND) {
-    if (strcmp(node->content, "bgcolor") == 0) {
-      strncpy(bgc, &node->child->content[1], 6);
-      sscanf(bgc, "%x", &bgcolor);
+    FT_Face face, FT_Matrix matrix, FT_GlyphSlot slot, unsigned int fcolor)
+  {
+    if (!node) return;
+  
+    char* text = node->content;
+    char bgc[10] = "";
+    char fc[10] = "";
+  
+    if (node->tag == COND) {
+      if (node->content) {
+        if (strcmp(node->content, "bgcolor") == 0) {
+          if (node->child && node->child->content && strlen(node->child->content) >= 7) {
+            strncpy(bgc, &node->child->content[1], 6);
+            bgc[6] = '\0';
+            sscanf(bgc, "%x", &bgcolor);
+          }
+        } else if (strcmp(node->content, "font") == 0) {
+          if (node->child && node->child->content && strlen(node->child->content) >= 7) {
+            strncpy(fc, &node->child->content[1], 6);
+            fc[6] = '\0';
+            sscanf(fc, "%x", &fcolor);
+          }
+        }
+      }
     }
-    else if (strcmp(node->content, "font") == 0) {
-      strncpy(fc, &node->child->content[1], 6);
-      sscanf(fc, "%x", &fcolor);
+    else if (node->tag == ANCH) {
+      if (node->child && node->child->next && node->child->next->content) {
+        text = node->child->next->content;
+        draw_text(text, &pen, target_height, face, matrix, slot, LINKCOLOR);
+      }
+      if (node->child && node->child->child && node->child->child->content && link_num < 10) {
+        strcpy(links[link_num], node->child->child->content);
+        link_num++;
+      }
     }
+    else if (node->tag == BR) {
+      pen.x = 10 * FONT_PTSCALE;
+      pen.y -= (FONT_PT+3) * FONT_PTSCALE;
+    }
+    else if (node->tag == TEXT) {
+      if (text && *text) {
+        draw_text(text, &pen, target_height, face, matrix, slot, fcolor);
+      }
+    }
+  
+    draw_body(node->next, pen, target_height, face, matrix, slot, fcolor);
   }
-  else if (node->tag == ANCH) {
-    /* Draw text */
-    text = node->child->next->content;
-    draw_text(text, &pen, target_height, face, matrix, slot, LINKCOLOR);
-    /* And store link */
-    strcpy(links[link_num], node->child->child->content);
-    link_num++;
-  }
-  else if (node->tag == BR) {
-    pen.x = 10 * FONT_PTSCALE;
-    pen.y -= (FONT_PT+3) * FONT_PTSCALE;
-  }
-  else if (node->tag == TEXT) {
-    draw_text(text, &pen, target_height, face, matrix, slot, fcolor);
-  }
-
-  draw_body(node->next, pen, target_height, face, matrix, slot, fcolor);
-}
 
 /* Show background and text */
 void show_image(void)
 {
-	int fd;
-	fd = open(FB_PATH, O_RDWR);
-	uint32_t *frameBuffer = 
-    (uint32_t *)mmap(NULL,WIDTH * HEIGHT * 4, 
-      PROT_WRITE, MAP_SHARED, fd, 0);
+  FILE *fp = fopen("out.ppm", "wb");
+  if (!fp) return;
 
-	for(int iy = 0; iy < HEIGHT; iy++){
-		for(int ix = 0; ix < WIDTH; ix++){
-			frameBuffer[ix + iy * WIDTH] = 
-        image[iy][ix] == 0 ? bgimage[iy][ix]
-          : image[iy][ix];
-		}
-	}
-
-	msync(frameBuffer, WIDTH * HEIGHT * 4, 0);
-	munmap(frameBuffer, WIDTH * HEIGHT * 4);
-	close(fd);
+  fprintf(fp, "P6\n%d %d\n255\n", WIDTH, HEIGHT);
+  for (int y = 0; y < HEIGHT; y++) {
+    for (int x = 0; x < WIDTH; x++) {
+      unsigned int px = (image[y][x] == 0) ? bgimage[y][x] : image[y][x];
+      unsigned char r = (px >> 16) & 0xFF;
+      unsigned char g = (px >> 8)  & 0xFF;
+      unsigned char b =  px        & 0xFF;
+      fputc(r, fp); fputc(g, fp); fputc(b, fp);
+    }
+  }
+  fclose(fp);
 }
 
 int main(void)
@@ -206,7 +212,7 @@ int main(void)
   char path[128];
   char url[256];
   int port;
-  int cmd;
+  int cmd = 0;
 
   dest = "localhost";
   strcpy(path, "index.html");
@@ -268,7 +274,9 @@ int main(void)
     pen.x = 10 * FONT_PTSCALE;
     pen.y = (target_height - 80) * FONT_PTSCALE;
     n_body = solve_body(&dom, BODY);
-    draw_body(n_body->child, pen, target_height, face, matrix, slot, fcolor);
+    if (n_body && n_body->child) {
+        draw_body(n_body->child, pen, target_height, face, matrix, slot, fcolor);
+    }
     draw_box(0, 50, 2048, 2048, bgcolor); // body background
 
     /* Show image */

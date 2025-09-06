@@ -1,38 +1,41 @@
-#ifndef _PARSER_H_
-#define _PARSER_H_
+#pragma once
+#include <stddef.h>
 
-#include <stdio.h>
-#include <string.h>
+typedef enum {
+  ROOT = 0,
+  HTML,
+  HEAD,
+  TITLE,
+  BODY,
+  COND,   // 属性（bgcolor, font, href など）
+  ANCH,   // aタグ
+  BR,
+  TEXT
+} tag_t;
 
-#define PARSER_BUF_SIZE 255
-#define NODE_NUM 100
-#define ROOT	0
-#define HTML	1
-#define HEAD	2
-#define TITLE	3
-#define BODY	4
-#define TEXT	5
-#define COND	6
-#define ANCH	7
-#define BR		8
-
+/* 簡易DOMノード */
 typedef struct node {
-	int tag;
-	char content[256];
-	struct node* parent;
-	struct node* child;
-	struct node* next;
+  tag_t tag;
+  char  content[256];        // 固定長（安全にstrncpyでコピー）
+  struct node *parent;
+  struct node *child;
+  struct node *next;
 } node_t;
 
-extern node_t dom;
+/* ルート初期化 */
+int     init_tree(node_t *root);
 
-int find_tag(char *string, int offset);
-node_t* sort_tag(char* buf, node_t* node, node_t* n, int fcond);
-int init_tree(node_t* node);
-int add_node(int tag, const char* content, node_t* parent, node_t* node);
-void show_tree(node_t* node);
-char* solve_node(node_t* node, int tag);
-node_t* solve_body(node_t* node, int tag);
-void divide_cond(const char* content, char* cond, char* value);
+/* HTMLを走査してDOMを構築（depthはログ用） */
+void    find_tag(const char *src, int depth);
 
-#endif
+/* デバッグ出力 */
+void    show_tree(node_t *root);
+
+/* 最初に見つかった指定タグのcontentを返す（存在しなければ空文字列） */
+char*   solve_node(node_t *root, tag_t tag);
+
+/* 最初に見つかった指定タグのノードを返す（なければNULL） */
+node_t* solve_body(node_t *root, tag_t tag);
+
+/* 子ノードを末尾に追加して返す（3引数に統一） */
+node_t* add_node(int tag, const char *content, node_t *parent);

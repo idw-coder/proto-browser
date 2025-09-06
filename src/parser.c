@@ -1,255 +1,252 @@
+// src/parser.c
 #include "parser.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 
-/* Find tag from string (HTML) */
-int find_tag(char *string, int offset)
+extern node_t dom;
+
+/* 3引数 add_node：ノード確保→親に接続 */
+node_t* add_node(int tag, const char* content, node_t* parent)
 {
-  int i = 0;
-  int endtag;
-  char c;
-  char buf[PARSER_BUF_SIZE];
-  int bufc = 0;
+  node_t *node = (node_t*)calloc(1, sizeof(*node));
+  if (!node) return NULL;
 
-  static node_t n[NODE_NUM];
-  static int nc = 0;
-  static int ftag = 0; // if 1, find_tag() in tag.
-  static int fcond = 0; // if 1, find_tag() in condition.
-  static node_t* now = &dom;
-
-  // Store tag string into this buffer.
-  memset(buf, 0, sizeof(buf));
-  c = string[i];
-
-  /* Scan every char */
-  for(i = offset; c != '\0'; i++) {
-    c = string[i];
-    if(c == '<') {
-      /* Find tag start '<', but buffer has string.
-       * So this string is text.
-       */
-      if (strcmp(buf, "") != 0){
-        if (buf[bufc - 1]==' ') buf[bufc - 1] = '\0';
-        printf("TEXT:%s\n", buf);
-        now = sort_tag(buf, now, &n[nc], fcond);
-        nc++;
-        memset(buf, 0, 255);
-        bufc = 0;
-      }
-      // Start seeking '>'.
-      printf("[find tag]");
-      ftag = 1;
-      endtag = find_tag(string, i + 1);
-      i = endtag;
-    }
-    else if (c == '>') {
-      // Find '>', so string in buffer is tag.
-      printf("%s\n", buf);
-      now = sort_tag(buf, now, &n[nc], fcond);
-      nc++;
-      memset(buf, 0, 255);
-      bufc = 0;
-      ftag = 0;
-      fcond = 0;
-      return i;
-    }
-    else if (c == '\n') {
-      // Discard
-    }
-    else if (c == ' ' || c == '\t') {
-      if (strcmp(buf, "") == 0) {
-        // Discard
-      }
-      else if (buf[bufc-1] == ' ') {
-        // Discard
-      }
-      else if(ftag == 1) {
-        // Space in tag, next is condition
-        printf("%s\n", buf);
-        now = sort_tag(buf, now, &n[nc], fcond);
-        nc++;
-        memset(buf, 0, 255);
-        fcond = 1;
-        bufc = 0;
-      }
-      else {
-        buf[bufc] = ' ';
-        bufc += 1;
-      }
-    } 
-    else {
-      buf[bufc] = c;
-      bufc += 1;
-    }
+  node->tag = (tag_t)tag;
+  if (content) {
+    size_t max = sizeof(node->content) - 1;
+    strncpy(node->content, content, max);
+    node->content[max] = '\0';
+  } else {
+    node->content[0] = '\0';
   }
 
-  return 0;
-}
-
-/* Sort found tags */
-node_t* sort_tag(char* buf, node_t* node, node_t* n, int fcond)
-{
-  if (strcmp(buf, "html") == 0){
-    add_node(HTML, NULL, node, n);
-    return n;
-  }
-  else if (strcmp(buf, "head") == 0){
-    add_node(HEAD, NULL, node, n);
-    return n;
-  }
-  else if (strcmp(buf, "title") == 0){
-    add_node(TITLE, NULL, node, n);
-    return n;
-  }
-  else if (strcmp(buf, "body") == 0){
-    add_node(BODY, NULL, node, n);
-    return n;
-  }
-  else if (strcmp(buf, "a") == 0){
-    add_node(ANCH, NULL, node, n);
-    return n;
-  }
-  else if (strcmp(buf, "br") == 0){
-    add_node(BR, NULL, node, n);
-    return node;
-  }
-  else if (strcmp(buf, "/html") == 0){
-    return node->parent;
-  }
-  else if (strcmp(buf, "/head") == 0){
-    return node->parent;
-  }
-  else if (strcmp(buf, "/title") == 0){
-    return node->parent;
-  }
-  else if (strcmp(buf, "/body") == 0){
-    return node->parent;
-  }
-  else if (strcmp(buf, "/a") == 0){
-    return node->parent;
-  }
-  else if (fcond == 1){
-    char cond[32] = "";
-    char value[32] = "";
-    divide_cond(buf, cond, value);
-    add_node(COND, cond, node, n);
-    add_node(TEXT, value, n, n + sizeof(node_t));
-    return n->parent;
-  }
-  else {
-    add_node(TEXT, buf, node, n);
-    return n->parent;
-  }
-}
-
-/* Init tree by adding root node */
-int init_tree(node_t* node)
-{
-  add_node(ROOT, NULL, NULL, node);
-  return 0;
-}
-
-/* Add node to DOM tree */
-int add_node(int tag, const char* content, node_t* parent, node_t* node)
-{
-  node->tag = tag;
-  if (content != NULL) strcpy(node->content, content);
-  else strcpy(node->content, "");
   node->parent = parent;
-  node->child = NULL;
-  node->next = NULL;
-  if (parent == NULL)
-    return 0;
-  if (parent->child == NULL)
-    parent->child = node;
-  else {
-    node_t * last = parent->child;
-    while (last->next != NULL)
-      last = last->next;
-    last->next = node;
-  }
+  node->child  = NULL;
+  node->next   = NULL;
 
+  if (parent) {
+    if (!parent->child) parent->child = node;
+    else {
+      node_t *last = parent->child;
+      while (last->next) last = last->next;
+      last->next = node;
+    }
+  }
+  return node;
+}
+
+int init_tree(node_t* root)
+{
+  memset(root, 0, sizeof(*root));
+  root->tag = ROOT;
   return 0;
 }
 
-/* Show DOM tree for debug */
-void show_tree(node_t* node)
+/* 文字列トリム */
+static void trim(char *s)
 {
-  static int depth = 0;
-  if(node == NULL) return;
+  if (!s) return;
+  size_t i=0, len=strlen(s);
+  while (i<len && (s[i]==' '||s[i]=='\t'||s[i]=='\n'||s[i]=='\r')) i++;
+  if (i) memmove(s, s+i, len-i+1);
+  len = strlen(s);
+  while (len>0 && (s[len-1]==' '||s[len-1]=='\t'||s[len-1]=='\n'||s[len-1]=='\r')) s[--len]='\0';
+}
 
-  /* Print tag */
-  printf("TAG:%d", node->tag);
-  if(strcmp(node->content, "") != 0)
-    printf(" %s", node->content);
-  printf("\n");
+/* name="val" を name/val に分解 */
+static void divide_cond(const char *attr, char *name_out, size_t name_cap,
+                        char *val_out,  size_t val_cap)
+{
+  if (!attr) { if(name_out) name_out[0]='\0'; if(val_out) val_out[0]='\0'; return; }
+  const char *eq = strchr(attr, '=');
+  if (!eq) {
+    strncpy(name_out, attr, name_cap-1); name_out[name_cap-1]='\0'; trim(name_out);
+    if (val_out) val_out[0]='\0';
+    return;
+  }
+  size_t nlen = (size_t)(eq - attr); if (nlen >= name_cap) nlen = name_cap-1;
+  memcpy(name_out, attr, nlen); name_out[nlen]='\0'; trim(name_out);
 
-  /* Goto child */
-  if(node->child != NULL){
-    depth += 1;
-    for(int i=0;i<depth;i++) printf("-");
-    show_tree(node->child);
-    depth -= 1;
+  const char *v = eq+1; while (*v==' '||*v=='\t') v++;
+  if (*v=='"' || *v=='\'') {
+    char q=*v++; size_t i=0;
+    while (*v && *v!=q && i+1<val_cap) val_out[i++]=*v++;
+    val_out[i]='\0';
+  } else {
+    strncpy(val_out, v, val_cap-1); val_out[val_cap-1]='\0';
+  }
+  trim(val_out);
+}
+
+/* …（show_tree / solve_node / solve_body はあなたの元コードで可） */
+
+/* 小文字化 */
+static void lower_token(const char *p, char *out, size_t cap)
+{
+  size_t i=0;
+  while (*p && *p!='>' && *p!=' ' && *p!='\t' && *p!='\n' && i+1<cap) {
+    char c=*p++;
+    if ('A'<=c && c<='Z') c = (char)(c-'A'+'a');
+    out[i++]=c;
+  }
+  out[i]='\0';
+}
+
+/* テキストを吐き出す C関数（ラムダ禁止なので外出し） */
+static void flush_text(node_t *parent, char *buf)
+{
+  trim(buf);
+  if (buf[0]) { add_node(TEXT, buf, parent); buf[0]='\0'; }
+}
+
+/* メインのパース。旧4引数 add_node 呼び出しを全て3引数に変更 */
+void find_tag(const char *src, int depth)
+{
+  (void)depth; if (!src) return;
+
+  node_t *root  = &dom;
+  node_t *n_html= add_node(HTML, NULL, root);
+  node_t *n_head= add_node(HEAD, NULL, n_html);
+  node_t *n_body= add_node(BODY, NULL, n_html);
+
+  /* <title>…</title> */
+  const char *t1 = strcasestr(src, "<title>");
+  const char *t2 = strcasestr(src, "</title>");
+  if (t1 && t2 && t2>t1) {
+    t1 += 7;
+    size_t len = (size_t)(t2 - t1);
+    char buf[256]; if (len >= sizeof(buf)) len = sizeof(buf)-1;
+    memcpy(buf, t1, len); buf[len]='\0'; trim(buf);
+    add_node(TITLE, buf, n_head);
   }
 
-  /* Goto next */
-  if(node->next != NULL){
-    for(int i=0;i<depth;i++) printf("-");
-    show_tree(node->next);
+  /* <body ...> 属性 → COND(name) の子に TEXT(value) をぶら下げる */
+  const char *b1 = strcasestr(src, "<body");
+  if (b1) {
+    const char *b2 = strchr(b1, '>');
+    if (b2 && b2>b1) {
+      char attr[256]; size_t alen=(size_t)(b2-(b1+5));
+      if (alen >= sizeof(attr)) alen = sizeof(attr)-1;
+      memcpy(attr, b1+5, alen); attr[alen]='\0';
+
+      char *p = attr;
+      while (*p) {
+        while (*p==' '||*p=='\t'||*p=='\n'||*p=='\r') p++;
+        if (!*p) break;
+        char token[128]=""; size_t ti=0;
+        while (*p && !(*p==' '||*p=='\t'||*p=='\n'||*p=='\r')) {
+          if (ti+1<sizeof(token)) token[ti++]=*p;
+          p++;
+        }
+        token[ti]='\0';
+        if (token[0]) {
+          char name[64], val[128];
+          divide_cond(token, name, sizeof(name), val, sizeof(val));
+          if (name[0] && val[0]) {
+            node_t *c = add_node(COND, name, n_body);
+            add_node(TEXT, val, c);
+          }
+        }
+      }
+    }
+  }
+
+  /* 本文抽出（<body>..</body> 範囲） */
+  const char *body_s = strcasestr(src, "<body");
+  const char *body_e = strcasestr(src, "</body>");
+  if (!body_s) body_s = src;
+  else { const char *gt=strchr(body_s,'>'); if (gt) body_s = gt+1; }
+  if (!body_e) body_e = src + strlen(src);
+
+  const char *p = body_s;
+  char textbuf[256] = "";
+
+  while (p < body_e && *p) {
+    if (*p == '<') {
+      flush_text(n_body, textbuf);     // ← ラムダの代わり
+      const char *q = strchr(p, '>');
+      if (!q) break;
+      char name[32]; lower_token(p+1, name, sizeof(name));
+      if (strcmp(name,"br")==0) {
+        add_node(BR, NULL, n_body);
+      } else if (strcmp(name,"a")==0) {
+        const char *gt = q;
+        const char *href = strcasestr(p, "href=");
+        char hrefv[128] = "";
+        if (href && href < gt) {
+          href += 5; while (*href==' '||*href=='\t') href++;
+          if (*href=='"' || *href=='\'') {
+            char quote=*href++; size_t i=0;
+            while (*href && *href!=quote && i+1<sizeof(hrefv)) hrefv[i++]=*href++;
+            hrefv[i]='\0';
+          }
+        }
+        const char *a_end = strcasestr(q+1, "</a>");
+        char linktext[256] = "";
+        if (a_end) {
+          size_t len=(size_t)(a_end-(q+1));
+          if (len >= sizeof(linktext)) len = sizeof(linktext)-1;
+          memcpy(linktext, q+1, len); linktext[len]='\0'; trim(linktext);
+        }
+        node_t *a = add_node(ANCH, NULL, n_body);
+        if (hrefv[0]) { node_t *c = add_node(COND, "href", a); add_node(TEXT, hrefv, c); }
+        if (linktext[0]) add_node(TEXT, linktext, a);
+
+        p = a_end ? a_end+4 : q+1;
+        continue;
+      }
+      p = q + 1;
+    } else {
+      size_t len = strlen(textbuf);
+      if (len+1 < sizeof(textbuf)) textbuf[len] = *p, textbuf[len+1]='\0';
+      p++;
+    }
+  }
+  flush_text(n_body, textbuf);         // ← 最後に吐く
+}
+void show_tree(node_t *root)
+{
+  if (!root) return;
+  static const char* tname[]={"ROOT","html","head","title","body","cond","a","br","text"};
+  node_t *st[1024]; int top=0;
+  if (root->child) st[top++]=root->child;
+  while (top>0) {
+    node_t *n = st[--top];
+    if (!n) continue;
+    printf("[%s] %s\n", tname[n->tag], n->content);
+    if (n->next) st[top++]=n->next;
+    if (n->child) st[top++]=n->child;
   }
 }
 
-/* Solve node from DOM tree from tag */
-char* solve_node(node_t* node, int tag)
+char* solve_node(node_t *root, tag_t tag)
 {
-  char* cont = NULL;
-  if(node == NULL) return NULL;
-
-  /* Search tag */
-  if(node->tag == tag)
-    return node->child->content;
-  else if(cont == NULL){
-    /* Goto child */
-    if(node->child != NULL)
-      cont = solve_node(node->child, tag);
-    /* Goto next */
-    if(cont == NULL && node->next != NULL)
-      cont = solve_node(node->next, tag);
+  static char empty[] = "";
+  if (!root) return empty;
+  node_t *st[1024]; int top=0;
+  if (root->child) st[top++]=root->child;
+  while (top>0) {
+    node_t *n = st[--top];
+    if (!n) continue;
+    if (n->tag == tag) return n->content;
+    if (n->next) st[top++]=n->next;
+    if (n->child) st[top++]=n->child;
   }
-  return cont;
+  return empty;
 }
 
-/* Return nodes */
-node_t* solve_body(node_t* node, int tag)
+node_t* solve_body(node_t *root, tag_t tag)
 {
-  node_t* ret = NULL;
-  if(node == NULL) return NULL;
-
-  /* Search tag */
-  if(node->tag == tag)
-    return node;
-  else if(ret == NULL){
-    /* Goto child */
-    if(node->child != NULL)
-      ret = solve_body(node->child, tag);
-    /* Goto next */
-    if(ret == NULL && node->next != NULL)
-      ret = solve_body(node->next, tag);
+  if (!root) return NULL;
+  node_t *st[1024]; int top=0;
+  if (root->child) st[top++]=root->child;
+  while (top>0) {
+    node_t *n = st[--top];
+    if (!n) continue;
+    if (n->tag == tag) return n;
+    if (n->next) st[top++]=n->next;
+    if (n->child) st[top++]=n->child;
   }
-  return ret;
-}
-
-/* Divide string by '=' */
-void divide_cond(const char* content, char* cond, char* value)
-{
-  int i;
-  int size = strlen(content);
-  for(i = 0; i < size; i++) {
-    if(content[i] == '=') {
-      strncpy(cond, content, i);
-      if(content[i + 1] == '\"' && content[size-1] == '\"')
-        strncpy(value, &(content[i + 2]), size - (i + 3));
-      else
-        strncpy(value, &(content[i + 1]), size - (i + 1));
-      break;
-    } 
-  }
+  return NULL;
 }
